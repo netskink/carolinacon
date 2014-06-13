@@ -1,0 +1,452 @@
+Use the tty command to get a tty.  Then use set inferior-tty to that /dev/id
+
+Two files
+  flag.dat 5000 bytes
+  ascii text file consisting of one long string of hex digits.
+
+  getflag 32-bit elf x86 executable. statically linked for linux 2.5.15
+  interesting strings
+  	flag.dat
+d5ca322453f2986b752e58b11af83d96
+checking key: %s
+The flag is: %s
+ok so far
+checksum failed!
+good job!
+bad (wrong key-no flag)
+MD5 part of OpenSSL 0.9.8k 25 Mar 2009
+FATAL: kernel too old
+/dev/urandom
+======= Backtrace: =========
+======= Memory map: ========
+ucs2_internal_loop_single
+utf8_internal_loop_single
+internal_utf8_loop_single
+internal_ascii_loop_single
+ucs4le_internal_loop
+inptr - bytebuf > (state->__count & 7)
+inend - inptr > (state->__count & ~7)
+nstatus == __GCONV_FULL_OUTPUT
+__gconv_transform_internal_ucs2reverse
+internal_ucs2reverse_loop_single
+__gconv_transform_ucs2reverse_internal
+ucs2reverse_internal_loop_single
+loadarchive.c
+Keld Simonsen
+keld@dkuug.dk
++45 3122-6543
++45 3325-6543
+1997-12-20
+ISO/IEC JTC1/SC22/WG20 - internationalization
+C/o Keld Simonsen, Skt. Jorgens Alle 8, DK-1615 Kobenhavn V
+checking for version `%s' in file %s [%lu] required by file %s [%lu]
+no version information available (required by 
+cannot allocate version reference table
+dl-version.c
+unsupported version 
+ of Verdef record
+
+Keld Simonsen is primary advisor on Danish open source: Unix, Posix, internet, wwww, and Open Doc. Has some stuff on locale encodigs and I see that in the strings as well.
+
+
+Just playing around, using a md5sum reverse, and using the first string as a md5sum gives the string "face".  That is very serrendiptus.
+
+http://md5.gromweb.com/?md5=d5ca322453f2986b752e58b11af83d96
+
+
+============================
+
+strace output notable entries
+open(flag.dat)
+mmap2()
+read(3, "5477f134ef17f6e903217843d25043c5"..., 3206) = 3206
+read(3, "6e4e7f5d640aec8910c040b5139e632b"..., 4096) = 1794
+close(3)
+close(3)                                = 0
+munmap(0xb77d7000, 4096)                = 0
+open("flag.dat", O_RDONLY)              = 3
+fstat64(3, {st_mode=S_IFREG|0644, st_size=5000, ...}) = 0
+mmap2(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb77d7000
+_llseek(3, 0, [0], SEEK_SET)            = 0
+read(3, "5477f134ef17f6e903217843d25043c5"..., 3190) = 3190
+read(3, "klqwdfnm78yuhjkl6e4e7f5d640aec89"..., 4096) = 1810
+close(3)                                = 0
+munmap(0xb77d7000, 4096)                = 0
+fstat64(1, {st_mode=S_IFIFO|0600, st_size=0, ...}) = 0
+mmap2(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb77d7000
+write(1, "ok so far\nchecking key: klqwdfnm"..., 65) = 65
+exit_group(1)                           = ?
+ok so far
+checking key: klqwdfnm78yuhjkl
+bad (wrong key-no flag)
+===================
+
+So looking at the flag.dat file.
+The 5477... string is at the top of the file. Its the first bytes.
+The klqwd... string is towards the bottom of the file.
+
+$ od -xc flag.dat shows that at offset
+0x6160+6 is start of klqwdfnm78yuhjkl string.
+0x6200+5 is end of the same string.
+
+$ echo klqwdfnm78yuhjkl | md5sum
+786a4d7e47cb49282bd107aafa734302  -
+===================
+
+Tracing from Main.
+System calls via
+call getstoredchk
+call getstoredkeyinput
+call checkstoredchk
+puts "ok so far"
+call checkkey
+   during this call it prints "checking key: klqwdfnm78yuhjklA
+back in main it prints bad (wrong key-no flag)
+call exit
+==================================
+
+objdump info
+$objdump -x getflag
+
+Shows pthread calls.  Something makes me think this is script code
+turned into a binary.  Its not a simple c program.
+Then again, getflag.c, crtstuff.c
+
+Start address 0x08048170
+elf32-i386
+flasg 0x112
+
+080483f0 g     F .text  000000a1 getstoredchk
+0804834f g     F .text  000000a1 getstoredkeyinput
+08048513 g     F .text  00000037 checkstoredchk
+08048588 g     F .text  000001e7 checkkey
+080487a2 g     F .text  000000be main
+
+
+===================
+
+Tracing from Main.
+System calls via
+call getstoredchk
+call getstoredkeyinput
+call checkstoredchk
+puts "ok so far"
+call checkkey
+   during this call it prints "checking key: klqwdfnm78yuhjklA
+back in main it prints bad (wrong key-no flag)
+call exit
+==================================
+
+Tracing getstoredchk 
+call fopen
+call fseek
+call fgets
+call strncpy
+call fclose
+   branch here. It did not take the call to __stack_chk_fail  This is part of gcc to protect from most buffer overflows.  See gcc -fstack-protector-all.
+
+==================================
+
+
+Tracing getstoredkeyinput
+call fopen
+call fseek
+call fgets
+call strncpy
+call fclose
+   branch here. It did not take the call to __stack_chk_fail  This is part of gcc to protect from most buffer overflows.  See gcc -fstack-protector-all.
+
+
+==================================
+
+Tracing checkstoredchk
+call strlen
+call str2md5
+call strcmp
+  NOTE: it does a strcmp, but does not examine result, simply returns from function.  Ahh, he does a check back in main. If zero, it jumps main+106.  The other path which is taken with default input results in the call to puts with "ok so far" message in main.
+
+
+=====================================
+
+Tracing checkkey
+
+prior to call, eax is 0xbffff2ca
+(gdb) print /x *0xbffff2ca
+$4 = 0x77716c6b
+or same thing
+(gdb) print /x ($eax) 
+$6 = 0xbffff2ca
+
+calls printf
+examining the args pass to printf, ie this is done just prior to call printf
+(gdb)  x/s ($eax)
+0x80abb5d:       "checking key: %s\n"
+(gdb)  x/s ($edx 
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+This results in message printted to tty: checking key: klqwdfnm78yuhjkl
+calls strlen
+this has two possible paths: one is jne to checkkey+483 which is not taken
+and it is an early exit from the routine.
+
+The next call is a strncmp, examine the stack and look for strings.
+(gdb) print $esp
+$1 = (void *) 0xbffff240
+(gdb) x/16x 
+0xbffff230:     0x080abb5d      0xbffff244      0xbffff278      0x080485ad
+0xbffff240:     0xbffff2ca      0x080abb6f      0x00000002      0x080cb0c0
+(gdb) x/16w 
+0xbffff230:     0x080abb5d      0xbffff244      0xbffff278      0x080485ad
+0xbffff240:     0xbffff2ca      0x080abb6f      0x00000002      0x080cb0c0
+0xbffff250:     0x00000009      0xbffff278      0x0804a821      0x080cb0c0
+0xbffff260:     0x0000000a      0x00000009      0x080ce830      0x00000000
+(gdb) x/s 0xbffff2ca
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+(gdb) x/s ($eax)
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+
+edx does not contain a string address.
+
+after the strncmp, it does a jne to same early return location checkkey+483. It indeed does take this jump.
+=======================================
+
+back in main after this routine, it does a test of the return code. The return code from teh strncmp is 0x9. Its not equal so it does not jump to main+130 instead it jumps to main+166.  At this point, we print the value of the for the call to puts.
+0x8048848 <main+166>    movl   $0x80abbab,(%esp)
+0x804884f <main+173>    call   0x804a6d0 <puts>   
+
+(gdb) x/s 0x080abbab
+0x80abbab:       "bad (wrong key-no flag)"
+
+then it does the exit of the code with return code set to 1.
+
+========================================
+
+Looking at checkkey again.
+
+set breakpoint on the call to checkkey
+0x8048801 <main+95>             call   0x8048588 <checkkey>
+(gdb) break *0x8048801
+
+eax is moved to top of stack before call.
+(gdb) x/s ($eax)
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+
+
+skipping down a bit, here is what happens after the strlen check and prior to 
+the strncmp.
+
+   │0x80485a8 <checkkey+32>         call   0x8056930 <strlen> 
+   │0x80485ad <checkkey+37>         cmp    $0x10,%eax 
+   │0x80485b0 <checkkey+40>         jne    0x804876b <checkkey+483>
+   │0x80485b6 <checkkey+46>         movl   $0x2,0x8(%esp)
+  >│0x80485be <checkkey+54>         movl   $0x80abb6f,0x4(%esp)
+   │0x80485c6 <checkkey+62>         mov    0x8(%ebp),%eax 
+   │0x80485c9 <checkkey+65>         mov    %eax,(%esp)   
+   │0x80485cc <checkkey+68>         call   0x80569e0 <strncmp>
+
+
+The format of strncmp is 
+      int strncmp(const char *s1, const char *s2, size_t n);
+
+The parms are put on the stack right to left. It looks like he only looks at
+2 bytes thus the constant 2 as the first move.
+
+Looking at stack once again prior to the strncmp
+
+(gdb) x/16x $esp 
+0xbffff240:     0xbffff2ca      0x080abb6f      0x00000002      0x080cb0c0
+0xbffff250:     0x00000009      0xbffff278      0x0804a821      0x080cb0c0
+0xbffff260:     0x0000000a      0x00000009      0x080ce830      0x00000000
+0xbffff270:     0x080499e0      0xd4acd800      0xbffff2e8      0x08048806
+(gdb) x/s 0xbffff2ca
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+(gdb) x/s 0x080abb6f
+0x80abb6f:       "b0"
+
+It looks like he is simply looking for the two byte string "b0"
+
+
+==================================
+
+Whoops. Its not that easy.
+
+If he is doing a cmp on "b0" lets see if its in the strings output.  That is a such a short string, I could have easily missed it. Running strings and searching
+for b0 shows it as a format string which is odd.  It looks like there is same asm code here
+
+From strings output:
+../nptl/sysdeps/unix/sysv/linux/i386/../fork.c
+({ __typeof (self->tid) __value; if (sizeof (__value) == 1) asm volatile ("movb %%gs:%P2,%b0" : "=q" (__value) : "0" (0), "i" (__builtin_offsetof (struct pthread, tid))); else if (sizeof (__value) == 4) asm volatile ("movl %%gs:%P1,%0" : "=r" (__value) : "i" (__builtin_offsetof (struct pthread, tid))); else { if (sizeof (__value) != 8) abort (); asm volatile ("movl %%gs:%P1,%%eax\n\t" "movl %%gs:%P2,%%edx" : "=A" (__value) : "i" (__builtin_offsetof (struct pthread, tid)), "i" (__builtin_offsetof (struct pthread, tid) + 4)); } __value; }) != ppid
+({ __typeof (({ struct pthread *__self; asm ("movl %%gs:%c1,%0" : "=r" (__self) : "i" (__builtin_offsetof (struct pthread, header.self))); __self;})->tid) __value; if (sizeof (__value) == 1) asm volatile ("movb %%gs:%P2,%b0" : "=q" (__value) : "0" (0), "i" (__builtin_offsetof (struct pthread, tid))); else if (sizeof (__value) == 4) asm volatile ("movl %%gs:%P1,%0" : "=r" (__value) : "i" (__builtin_offsetof (struct pthread, tid))); else { if (sizeof (__value) != 8) abort (); asm volatile ("movl %%gs:%P1,%%eax\n\t" "movl %%gs:%P2,%%edx" : "=A" (__value) : "i" (__builtin_offsetof (struct pthread, tid)), "i" (__builtin_offsetof (struct pthread, tid) + 4)); } __value; }) == ppid
+
+
+
+I noticed once when I was running this code, it mmapped the .dat file.  Is he storing code in this file and then running it in one of the earlier routines?
+
+I also see the stuff on threads with pthread symbols.  I did not see any threads.  Were they created and and then closed in one of the earlier calls?
+
+Lastly simply doing an edit of the .dat file to replace the key portion first two chars with b0 did not work. It gave a checksum error and failed to work.
+
+Look again at the routines and see if any kick off a thread.
+
+
+==================================
+
+Relooking at getstoredchk.
+
+Looking at parms to strncpy
+
+       char *strncpy(char *dest, const char *src, size_t n);
+(gdb) x/16x $esp
+0xbffff220:     0xbffff2a8      0xbffff24a      0x00000022      0x080a89d1
+0xbffff230:     0x00000002      0x080cecd8      0x080cc060      0xbffff2a8
+0xbffff240:     0xbffff25c      0x080cf6a8      0x65360014      0x66376534
+0xbffff250:     0x34366435      0x63656130      0x30313938      0x30343063
+(gdb) x/s 0xbffff2a8
+0xbffff2a8:      "\350\362\377\277r\232\004\b\204\363\377\277\340\231\004\b\340\231\004\b"
+(gdb) x/s 0xbffff24a
+0xbffff24a:      "6e4e7f5d640aec8910c040b5139e632b"
+
+Looks like the len for the parm is 0x22.
+   getstoredchk returns 0 in eax.
+
+===============
+
+Looking at main just prior to getstoredkeyinput call.
+
+   │0x80487c5 <main+35>     call   0x80483f0 <getstoredchk>
+   │0x80487ca <main+40>     lea    0x4a(%esp),%eax 
+   │0x80487ce <main+44>     mov    %eax,(%esp)    
+  >│0x80487d1 <main+47>     call   0x804834f <getstoredkeyinput>     
+
+(gdb) x/16w $esp
+0xbffff280:     0xbffff2ca      0x080cb728      0xbffff38c      0xbffff2b8
+0xbffff290:     0x0805be75      0x080caff4      0xbffff2a8      0xbffff384
+0xbffff2a0:     0x00000006      0x00000000      0x65346536      0x64356637
+0xbffff2b0:     0x61303436      0x39386365      0x30633031      0x35623034
+
+(gdb) x/s $eax
+0xbffff2ca:      "\f\b"
+
+Address notes, 
+0x0804 0000  code
+0xbfff 0000  stack
+
+The parm passed at top of stack to getstoredkeyinput looks like data.
+
+(gdb) x/w ($eax)
+0xbffff2ca:     0x0000080c
+
+Inside the routine, prior to the strncpy, we have
+
+(gdb) x/16w $esp
+0xbffff230:     0xbffff2ca      0xbffff25a      0x00000012      0xbffff2a8
+0xbffff240:     0xbffff25c      0x080cf6a8      0x65360014      0xbffff2ca
+0xbffff250:     0x34366435      0x080cf6a8      0x6c6b3938      0x66647771
+
+Looks, for the strncpy this is the setup
+dest = 0xbffff2ca
+src = 0xbffff25a
+len = 0x12
+
+(gdb) x/s 0xbffff2ca          
+0xbffff2ca:      "\f\b"
+(gdb) x/s 0xbffff25a
+0xbffff25a:      "klqwdfnm78yuhjkl"
+
+==========================
+
+back in main prior to call to checkstoredchk
+
+(gdb) x/16w 
+0xbffff280:     0xbffff2a8      0xbffff2ca      0xbffff38c      0xbffff2b8
+0xbffff290:     0x0805be75      0x080caff4      0xbffff2a8      0xbffff384
+0xbffff2a0:     0x00000006      0x00000000      0x65346536      0x64356637
+
+(gdb) x/s 0xbffff2a8
+0xbffff2a8:      "6e4e7f5d640aec8910c040b5139e632b"
+(gdb) x/s 0xbffff2ca
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+
+Those look like the two parms to checkstoredchk
+
+Inside this routine it calls str2md5.  There was a routine on stackoverflow
+with this exact name.
+
+char *str2md5(const char *str, int length) {
+    int n;
+    MD5_CTX c;
+    unsigned char digest[16];
+    char *out = (char*)malloc(33);
+
+    MD5_Init(&c);
+
+    while (length > 0) {
+        if (length > 512) {
+            MD5_Update(&c, str, 512);
+        } else {
+            MD5_Update(&c, str, length);
+        }
+        length -= 512;
+        str += 512;
+    }
+
+    MD5_Final(digest, &c);
+
+    for (n = 0; n < 16; ++n) {
+        snprintf(&(out[n*2]), 16*2, "%02x", (unsigned int)digest[n]);
+    }
+
+    return out;
+}
+
+Prior to the str2md5 call, two items are put on stack.  It looks like he used
+the exact same code.
+
+(gdb) x/16w $esp
+0xbffff250:     0xbffff2ca      0x00000010      0x6c6b3938      0x66647771
+0xbffff260:     0x38376d6e      0x6a687579      0x00006c6b      0xebe4d700
+0xbffff270:     0x00000004      0x00000010      0xbffff2e8      0x080487ea
+0xbffff280:     0xbffff2a8      0xbffff2ca      0xbffff38c      0xbffff2b8
+(gdb) x/s 0xbffff2ca
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+
+The 0x10 or 16 is the length of the buffer.
+
+Just looking at the str2md5 in debugger, verifies it as well.
+malloc, MD5_Init, MD5_Update in a loop, and then MD5_Final
+
+At the end, the strcmp examines the following string, which matches
+6e4e7f5d640aec8910c040b5139e632b
+
+
+==========================
+
+
+General notes on the stack.  Here we are doing a printf, look at the stack at this time.
+
+   │0x804859a <checkkey+18> mov    %eax,(%esp)
+  >│0x804859d <checkkey+21> call   0x8049e80 <printf> 
+   │0x80485a2 <checkkey+26> mov    0x8(%ebp),%eax  
+   │0x80485a5 <checkkey+29> mov    %eax,(%esp)    
+
+(gdb) x/2wx $esp
+0xbffff240:     0x080abb5d      0xbffff2ca
+(gdb) x/s 0x80abb5d
+0x80abb5d:       "checking key: %s\n"
+(gdb) x/s
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+============================================
+
+In checkhash called from checkkey, he does a str2md5sum of a subset of the key.
+
+(gdb) x/4wx $esp
+0xbffff210:     0x080cf6e8      0x080abb3c      0x00000000      0x080499e0
+(gdb) x/s 0x080cf6e8
+0x80cf6e8:       "f8bfd977f4d91e9d0b2adc2d1a1ee1ef"
+(gdb) x/s 0x080abb3c
+0x80abb3c:       "d5ca322453f2986b752e58b11af83d96"
+(gdb) 
+
+The second one there is hardcoded hash in the strings output.
+
+
+

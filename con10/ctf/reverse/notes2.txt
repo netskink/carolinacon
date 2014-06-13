@@ -1,0 +1,529 @@
+At this point, I have a partial working setup.  I have a partial key figured
+out, but I'm restarting the notes to look at it in detail here.
+
+
+Starting with a break point in main where it calls checkkey.
+
+   │0x80487fa <main+88>     lea    0x4a(%esp),%eax  
+   │0x80487fe <main+92>     mov    %eax,(%esp)  
+B+>│0x8048801 <main+95>     call   0x8048588 <checkkey>    
+(gdb) x/4wx $esp
+0xbffff280:     0xbffff2ca      0xbffff2ca      0xbffff38c      0xbffff2b8
+(gdb) 
+The first parm is the keyread from the .dat file.
+(gdb) x/s 0xbffff2ca
+0xbffff2ca:      "klqwdfnm78yuhjkl"
+
+Replacing it with what I believe is correct up to a point.
+(gdb) call strcpy(0xbffff2ca,"b07ddfcefayu050b")
+in june do this one.
+(gdb) call strcpy(0xbffff2ca,"b07ddfcefayu060b")
+$1 = -1073745206
+(gdb) x/s 0xbffff2ca
+0xbffff2ca:      "b07ddfcefayu050b"
+(gdb) 
+
+
+
+The first part of the code looks for particular substrings pass then it gets to the checkhash call.  This code uses the hash in the strings output which we know correspond to the word "face", but the text is scrambled. So in the key under test its "cefa".
+
+
+
+
+0xbffff2ca:      "b07ddfcefayu050b"
+offsets:          0123456789abcdef
+
+
+   │0x8048635 <checkkey+173>        call   0x804854a <checkhash>
+   │0x804863a <checkkey+178>        test   %eax,%eax
+   │0x804863c <checkkey+180>        jne    0x8048755 <checkkey+461>
+   │0x8048642 <checkkey+186>        mov    0x8(%ebp),%eax 
+  >│0x8048645 <checkkey+189>        add    $0xc,%eax
+   │0x8048648 <checkkey+192>        movzbl (%eax),%eax
+   │0x804864b <checkkey+195>        mov    %al,-0xf(%ebp)
+   │0x804864e <checkkey+198>        mov    0x8(%ebp),%eax 
+   │0x8048651 <checkkey+201>        add    $0xd,%eax 
+   │0x8048654 <checkkey+204>        movzbl (%eax),%eax 
+   │0x8048657 <checkkey+207>        mov    %al,-0xe(%ebp) 
+   │0x804865a <checkkey+210>        movb   $0x0,-0xd(%ebp) 
+   │0x804865e <checkkey+214>        movl   $0x0,(%esp) 
+   
+   │0x804866a <checkkey+226>        mov    %eax,-0x18(%ebp)
+
+(gdb) x/s 0xbffff2ca
+0xbffff2ca:      "b07ddfcefayu050b"
+(gdb) 
+
+
+After you step to checkkey+195. Eax contains 0x30 or ascii 0.
+
+   │eax            0x30     48    
+
+   │0x8048648 <checkkey+192>        movzbl (%eax),%eax
+  >│0x804864b <checkkey+195>        mov    %al,-0xf(%ebp)
+
+(gdb) x/4wx $ebp-15 
+0xbffff269:     0xd0bffff2      0xe0080cf6      0x00080499      0xe81ad6c4
+(gdb) nexti
+0x0804864e in checkkey ()
+(gdb) x/4wx $ebp-15
+0xbffff269:     0xd0bfff30      0xe0080cf6      0x00080499      0xe81ad6c4
+
+The next bit of code, moves 0x35 or ascii 5 into eax.
+
+
+
+
+   │0x8048648 <checkkey+192>        movzbl (%eax),%eax
+   │0x804864b <checkkey+195>        mov    %al,-0xf(%ebp)
+   │0x804864e <checkkey+198>        mov    0x8(%ebp),%eax 
+   │0x8048651 <checkkey+201>        add    $0xd,%eax
+   │0x8048654 <checkkey+204>        movzbl (%eax),%eax
+  >│0x8048657 <checkkey+207>        mov    %al,-0xe(%ebp)
+   │0x804865a <checkkey+210>        movb   $0x0,-0xd(%ebp)
+   │0x804865e <checkkey+214>        movl   $0x0,(%esp)
+   │0x8048665 <checkkey+221>        call   0x8057f10 <time>
+   │0x804866a <checkkey+226>        mov    %eax,-0x18(%ebp)
+
+
+
+Then it moves it into the next byte of that same buffer.
+
+(gdb) x/4wx $ebp-15
+0xbffff269:     0xd0bfff30      0xe0080cf6      0x00080499      0xe81ad6c4
+(gdb) nexti
+0x0804865a in checkkey ()
+(gdb) x/4wx $ebp-15
+0xbffff269:     0xd0bf3530      0xe0080cf6      0x00080499      0xe81ad6c4
+(gdb) 
+
+prepends a zero? Its writing it backwards?
+
+(gdb) x/4wx $ebp-15
+0xbffff269:     0xd0bf3530      0xe0080cf6      0x00080499      0xe81ad6c4
+(gdb) nexti
+0x0804865e in checkkey ()
+(gdb) x/4wx $ebp-15
+0xbffff269:     0xd0003530      0xe0080cf6      0x00080499      0xe81ad6c4
+(gdb) 
+
+It calls time with a null as the parm..
+
+   │0x804865a <checkkey+210>        movb   $0x0,-0xd(%ebp)
+  >│0x804865e <checkkey+214>        movl   $0x0,(%esp)
+   │0x8048665 <checkkey+221>        call   0x8057f10 <time> 
+   │0x804866a <checkkey+226>        mov    %eax,-0x18(%ebp) 
+
+From $ man 2 time
+
+       time_t time(time_t *t);
+
+DESCRIPTION
+       time()  returns  the  time  as  the  number of seconds since the Epoch,
+       1970-01-01 00:00:00 +0000 (UTC).
+
+       If t is non-NULL, the return value is also stored in the memory pointed
+       to by t.
+
+
+After the call, to time, I assme the number of seconds is in eax as normal.
+
+   │0x804865e <checkkey+214>        movl   $0x0,(%esp)
+   │0x8048665 <checkkey+221>        call   0x8057f10 <time> 
+  >│0x804866a <checkkey+226>        mov    %eax,-0x18(%ebp) 
+   │0x804866d <checkkey+229>        lea    -0x18(%ebp),%eax
+   │0x8048670 <checkkey+232>        mov    %eax,(%esp) 
+
+(gdb) print /x $eax
+$2 = 0x538c9682
+(gdb) 
+(gdb) x/4wx $ebp-0x18
+0xbffff260:     0xbffff264      0x08048170      0x003530ca      0x080cf6d0
+(gdb) nexti
+0x0804866d in checkkey ()
+(gdb) x/4wx $ebp-0x18
+0xbffff260:     0x538c9682      0x08048170      0x003530ca      0x080cf6d0
+(gdb) 
+
+It appears he saves that to a local variable and then passes it as a parm
+to localtime.
+
+       struct tm *localtime(const time_t *timep);
+
+
+This time, the return value will be a pointer to a structure in eax.
+
+   │0x804866d <checkkey+229>        lea    -0x18(%ebp),%eax
+   │0x8048670 <checkkey+232>        mov    %eax,(%esp) 
+  >│0x8048673 <checkkey+235>        call   0x8057eb0 <localtime>
+   │0x8048678 <checkkey+240>        mov    %eax,-0x1c(%ebp) 
+   │0x804867b <checkkey+243>        mov    -0x1c(%ebp),%eax
+
+(gdb) x/4wx $ebp-0x18
+0xbffff260:     0x538c9682      0x08048170      0x003530ca      0x080cf6d0
+(gdb) nexti
+0x08048670 in checkkey ()
+0x08048673 in checkkey ()
+(gdb) x/4xw 
+0xbffff240:     0xbffff260      0x080abb6f      0x00000002      0x08055257
+(gdb) x/4xw 0xbffff260
+0xbffff260:     0x538c9682      0x08048170      0x003530ca      0x080cf6d0
+(gdb) 
+
+After the call to localtime eax looks like:
+│eax            0x80cd0c0        135057600  
+
+   │0x8048670 <checkkey+232>        mov    %eax,(%esp) 
+   │0x8048673 <checkkey+235>        call   0x8057eb0 <localtime> 
+  >│0x8048678 <checkkey+240>        mov    %eax,-0x1c(%ebp) 
+   │0x804867b <checkkey+243>        mov    -0x1c(%ebp),%eax 
+   │0x804867e <checkkey+246>        mov    0x10(%eax),%eax 
+   │0x8048681 <checkkey+249>        add    $0x1,%eax  
+
+
+He moves eax to frame and then back to eax
+
+(gdb) x/4wx $ebp-0x1c
+0xbffff25c:     0x080499e0      0x538c9682      0x08048170      0x003530ca
+(gdb) nexti
+0x0804867b in checkkey ()
+(gdb) x/4wx $ebp-0x1c
+0xbffff25c:     0x080cd0c0      0x538c9682      0x08048170      0x003530ca
+(gdb) nexti
+0x0804867e in checkkey ()
+(gdb) 
+
+
+   │0x8048678 <checkkey+240>        mov    %eax,-0x1c(%ebp) 
+   │0x804867b <checkkey+243>        mov    -0x1c(%ebp),%eax 
+  >│0x804867e <checkkey+246>        mov    0x10(%eax),%eax 
+   │0x8048681 <checkkey+249>        add    $0x1,%eax 
+   │0x8048684 <checkkey+252>        mov    %eax,-0x20(%ebp) 
+   │0x8048687 <checkkey+255>        cmpl   $0x9,-0x20(%ebp)
+
+eax            0x80cd0c0        135057600     
+
+
+I'm rusty on my assembly, but I think the mov 0x10(%eax), %eax
+takes the address in eax as a base address and then indexes 0x10 from that
+and stores the data at that location in eax.
+
+yeap that is what it does.
+
+(gdb) x/4xw 0x80cd0c0+0x10
+0x80cd0d0 <_tmbuf+16>:  0x00000005      0x00000072      0x00000001      0x00000098
+(gdb) nexti
+0x08048681 in checkkey ()
+
+and after the instruction checkkey+246 eax contains 5.
+│eax            0x5      5         
+
+Now we get to the odd stuff.
+
+   │0x8048673 <checkkey+235>        call   0x8057eb0 <localtime> 
+   │0x8048678 <checkkey+240>        mov    %eax,-0x1c(%ebp) 
+   │0x804867b <checkkey+243>        mov    -0x1c(%ebp),%eax
+   │0x804867e <checkkey+246>        mov    0x10(%eax),%eax 
+  >│0x8048681 <checkkey+249>        add    $0x1,%eax 
+   │0x8048684 <checkkey+252>        mov    %eax,-0x20(%ebp) 
+   │0x8048687 <checkkey+255>        cmpl   $0x9,-0x20(%ebp) 
+   │0x804868b <checkkey+259>        jg     0x80486b1 <checkkey+297> 
+   │0x804868d <checkkey+261>        movb   $0x30,-0x12(%ebp) 
+   │0x8048691 <checkkey+265>        mov    $0x80abb72,%eax 
+   │0x8048696 <checkkey+270>        mov    -0x20(%ebp),%edx 
+   │0x8048699 <checkkey+273>        mov    %edx,0x8(%esp)
+   │0x804869d <checkkey+277>        mov    %eax,0x4(%esp) 
+   │0x80486a1 <checkkey+281>        lea    -0x12(%ebp),%eax 
+   │0x80486a4 <checkkey+284>        add    $0x1,%eax  
+
+
+
+add one makes eax 6.
+
+(gdb) x/4wx $ebp-0x20
+0xbffff258:     0x00000000      0x080cd0c0      0x538c9682      0x08048170
+(gdb) nexti
+0x08048687 in checkkey ()
+(gdb) x/4wx $ebp-0x20
+0xbffff258:     0x00000006      0x080cd0c0      0x538c9682      0x08048170
+
+The move simply stores the 6 on the stack.
+
+Just for grins. Looking back at the time structure and looking at the offset of 0x10 or 16 that means we are looking at 16 bytes into the structure.  Here is the structure.
+
+
+          struct tm {
+               int tm_sec;         /* seconds */
+               int tm_min;         /* minutes */
+               int tm_hour;        /* hours */
+               int tm_mday;        /* day of the month */
+               int tm_mon;         /* month */
+               int tm_year;        /* year */
+               int tm_wday;        /* day of the week */
+               int tm_yday;        /* day in the year */
+               int tm_isdst;       /* daylight saving time */
+           };
+
+Assuming ints are 32-bits or 4-bytes.  Counting 0,1,2,3,4 we are at the offset
+corresponding to month and the return value was 6. Considering i'm doing this code much later than carolinacon in the month of June this seems right.
+
+Now, he compares this value with 0x9 which seems to imply he is going to do something different if its in september.  It does not make sense to me. 
+
+   │0x8048687 <checkkey+255>        cmpl   $0x9,-0x20(%ebp) 
+   │0x804868b <checkkey+259>        jg     0x80486b1 <checkkey+297> 
+  >│0x804868d <checkkey+261>        movb   $0x30,-0x12(%ebp) 
+   │0x8048691 <checkkey+265>        mov    $0x80abb72,%eax  
+   │0x8048696 <checkkey+270>        mov    -0x20(%ebp),%edx 
+
+As expected, we did not make the jump.
+
+Dumping the addresses for the next bit of code.
+
+(gdb) x/4wx $ebp-0x12
+0xbffff266:     0x30ca0804      0xf6d00035      0x99e0080c      0xc4000804
+(gdb) x/4wx 0x80abb72
+0x80abb72:      0x54006425      0x66206568      0x2067616c      0x203a7369
+(gdb) x/s 
+0x80abb72:       "%d"
+
+   │0x804868d <checkkey+261>        movb   $0x30,-0x12(%ebp) 
+   │0x8048691 <checkkey+265>        mov    $0x80abb72,%eax 
+  >│0x8048696 <checkkey+270>        mov    -0x20(%ebp),%edx 
+   │0x8048699 <checkkey+273>        mov    %edx,0x8(%esp) 
+   │0x804869d <checkkey+277>        mov    %eax,0x4(%esp)
+
+(gdb) nexti
+0x08048691 in checkkey ()
+0x08048696 in checkkey ()
+
+│eax            0x80abb72        134921074   
+
+offset 0x20 from ebp is our local containing the 0x6 for june.
+(gdb) x/4wx $ebp-0x20
+0xbffff258:     0x00000006      0x080cd0c0      0x538c9682      0x08308170
+
+He puts that in edx.
+│edx            0x6      6          
+
+Then he stores it on stack. Followed by the "%d" string address on stack.
+
+   │0x8048699 <checkkey+273>        mov    %edx,0x8(%esp) 
+   │0x804869d <checkkey+277>        mov    %eax,0x4(%esp) 
+  >│0x80486a1 <checkkey+281>        lea    -0x12(%ebp),%eax
+   │0x80486a4 <checkkey+284>        add    $0x1,%eax 
+   │0x80486a7 <checkkey+287>        mov    %eax,(%esp)
+
+(gdb) x/4wx $esp     
+0xbffff240:     0xbffff260      0x080abb72      0x00000006      0x08055257
+(gdb) x/s  0x080abb72
+0x80abb72:       "%d"
+(gdb) 
+
+Loads eax with ebp-0x12.
+│eax            0xbffff266       -1073745306       
+
+So before he adds one to eax.  Here is what we have:
+
+│eax            0xbffff266       -1073745306   
+   │0x804869d <checkkey+277>        mov    %eax,0x4(%esp)                                   │
+   │0x80486a1 <checkkey+281>        lea    -0x12(%ebp),%eax                                 │
+  >│0x80486a4 <checkkey+284>        add    $0x1,%eax                                        │
+   │0x80486a7 <checkkey+287>        mov    %eax,(%esp)                                      │
+   │0x80486aa <checkkey+290>        call   0x8049ee0 <sprintf>   
+
+(gdb) x/4xw 0xbffff266
+0xbffff266:     0x30ca0830      0xf6d00035      0x99e0080c      0xc4000804
+(gdb) x/s 
+0xbffff266:      "0\b\312\060\065"
+
+adds one to eax.
+│eax            0xbffff267       -1073745305          
+
+then does a move to put on stack prior to calling sprintf
+(gdb) x/4wx $esp
+0xbffff240:     0xbffff267      0x080abb72      0x00000006      0x08055257
+
+So, in C it would like this, sprintf(buffer,"%d",6); with buffer having address
+0xbffff267
+
+So before call to sprintf the buffer looks odd.
+(gdb) x/s 
+0xbffff267:      "\b\312\060\065"
+(gdb) x/s 0x080abb72
+
+after the sprintf, it looks as expected.
+
+(gdb) nexti
+0x080486af in checkkey ()
+(gdb) x/s 0x080abb72
+0x80abb72:       "%d"
+(gdb) x/s 0xbffff267
+0xbffff267:      "6"
+(gdb) 
+
+   │0x80486aa <checkkey+290>        call   0x8049ee0 <sprintf> 
+  >│0x80486af <checkkey+295>        jmp    0x80486cc <checkkey+324>
+   │0x80486b1 <checkkey+297>        mov    $0x80abb72,%eax  
+   │0x80486b6 <checkkey+302>        mov    -0x20(%ebp),%edx
+   │0x80486b9 <checkkey+305>        mov    %edx,0x8(%esp)            
+
+
+
+Odd again. After it calculates a buffer with the month, it does a jmp.
+
+   │0x80486aa <checkkey+290>        call   0x8049ee0 <sprintf> 
+  >│0x80486af <checkkey+295>        jmp    0x80486cc <checkkey+324> 
+   │0x80486b1 <checkkey+297>        mov    $0x80abb72,%eax  
+   │0x80486b6 <checkkey+302>        mov    -0x20(%ebp),%edx 
+   │0x80486b9 <checkkey+305>        mov    %edx,0x8(%esp) 
+   │0x80486bd <checkkey+309>        mov    %eax,0x4(%esp)
+   │0x80486c1 <checkkey+313>        lea    -0x12(%ebp),%eax 
+   │0x80486c4 <checkkey+316>        mov    %eax,(%esp) 
+   │0x80486c7 <checkkey+319>        call   0x8049ee0 <sprintf> 
+   │0x80486cc <checkkey+324>        lea    -0xf(%ebp),%eax 
+   │0x80486cf <checkkey+327>        mov    %eax,0x4(%esp) 
+   │0x80486d3 <checkkey+331>        lea    -0x12(%ebp),%eax 
+
+Taking the jump and resuming from there.
+
+  >│0x80486cc <checkkey+324>        lea    -0xf(%ebp),%eax 
+   │0x80486cf <checkkey+327>        mov    %eax,0x4(%esp) 
+   │0x80486d3 <checkkey+331>        lea    -0x12(%ebp),%eax 
+   │0x80486d6 <checkkey+334>        mov    %eax,(%esp) 
+   │0x80486d9 <checkkey+337>        call   0x80568f0 <strcmp> 
+   │0x80486de <checkkey+342>        test   %eax,%eax 
+   │0x80486e0 <checkkey+344>        jne    0x8048758 <checkkey+464> 
+   │0x80486e2 <checkkey+346>        mov    0x8(%ebp),%eax 
+   │0x80486e5 <checkkey+349>        add    $0x2,%eax 
+   │0x80486e8 <checkkey+352>        movzbl (%eax),%eax 
+   │0x80486eb <checkkey+355>        cmp    $0x37,%al  
+   │0x80486ed <checkkey+357>        jne    0x804875b <checkkey+467> 
+   │0x80486ef <checkkey+359>        mov    0x8(%ebp),%eax 
+   │0x80486f2 <checkkey+362>        add    $0x3,%eax 
+
+
+As I am doing this, I think maybe we are not supposed to take this jump. Maybe the compare against the month before was meant to be setup so that we don't do the jump.
+
+After the lea of frame -15 to eax.
+│eax            0xbffff269       -1073745303  
+
+(gdb) x/s 0xbffff269
+0xbffff269:      "05"
+
+Hmm. This looks like the 05 from the key. If I remember right, this was a hardcoded value done one character at a time.
+
+He puts this value on the stack.
+
+Then he reloads eax with a different value from stack.
+
+│eax            0xbffff266   
+
+and puts this on stack before he does the call to strcmp.
+
+(gdb) nexti
+0x080486d9 in checkkey ()
+(gdb) x/4xw $esp
+0xbffff240:     0xbffff266      0xbffff269      0x00000006      0x08055257
+(gdb) x/s 0xbffff266
+0xbffff266:      "06"
+(gdb) x/s 0xbffff269
+0xbffff269:      "05"
+(gdb) 
+
+Hmm. I wrote the 0x5 up there because when I first played with this it was in May and I wanted to pass this part. CarolinaCon May 16th, 17th, 18th.
+
+Faking out the strcmp, we get to where we load eax with 0xbffff2ca.
+
+(gdb) x/s 0xbffff266
+0xbffff266:      "06"
+(gdb) x/s 0xbffff269
+0xbffff269:      "05"
+(gdb) nexti
+0x080486de in checkkey ()
+(gdb) set $eax=0
+(gdb) nexti
+0x080486e0 in checkkey ()
+(gdb) nexti
+0x080486e2 in checkkey ()
+0x080486e5 in checkkey ()
+(gdb) 
+
+ eax            0xbffff2ca       -1073745206    
+
+so he is looking at the key again and then going to offset 0x2.
+He looks for an ascii 7 at that location.
+
+   │0x80486e0 <checkkey+344>        jne    0x8048758 <checkkey+464> 
+   │0x80486e2 <checkkey+346>        mov    0x8(%ebp),%eax  
+   │0x80486e5 <checkkey+349>        add    $0x2,%eax 
+   │0x80486e8 <checkkey+352>        movzbl (%eax),%eax 
+   │0x80486eb <checkkey+355>        cmp    $0x37,%al
+   │0x80486ed <checkkey+357>        jne    0x804875b <checkkey+467> 
+  >│0x80486ef <checkkey+359>        mov    0x8(%ebp),%eax
+   │0x80486f2 <checkkey+362>        add    $0x3,%eax
+   │0x80486f5 <checkkey+365>        movzbl (%eax),%eax 
+   │0x80486f8 <checkkey+368>        cmp    $0x64,%al 
+   │0x80486fa <checkkey+370>        jne    0x804875e <checkkey+470> 
+   │0x80486fc <checkkey+372>        mov    0x8(%ebp),%eax 
+   │0x80486ff <checkkey+375>        add    $0x4,%eax 
+   │0x8048702 <checkkey+378>        movzbl (%eax),%eax 
+   │0x8048705 <checkkey+381>        mov    %al,-0x9(%ebp) 
+
+
+Goes to thirdoffset of that string and compares it with 0x64 or "d"
+
+Goes to fourth offset of that key string and A
+
+
+Here is state of machine.
+
+│eax            0x64     100 
+│ecx            0x35     53 
+│edx            0x2      2 
+│ebx            0x0      0
+│esp            0xbffff240       0xbffff240 
+│ebp            0xbffff278       0xbffff278 
+│esi            0x80499e0        134519264 
+│edi            0x1ad6c400       450282496 
+│eip            0x8048705        0x8048705 <checkkey+381> 
+│eflags         0x282    [ SF IF ]                       
+│cs             0x73     115  
+│ss             0x7b     123 
+│ds             0x7b     123
+│es             0x7b     123 
+│fs             0x0      0  
+   ┌─────────────────────────────────────────────────
+   │0x80486f2 <checkkey+362>        add    $0x3,%eax      
+   │0x80486f5 <checkkey+365>        movzbl (%eax),%eax  
+   │0x80486f8 <checkkey+368>        cmp    $0x64,%al  
+   │0x80486fa <checkkey+370>        jne    0x804875e <checkkey+470> 
+   │0x80486fc <checkkey+372>        mov    0x8(%ebp),%eax  
+   │0x80486ff <checkkey+375>        add    $0x4,%eax  
+   │0x8048702 <checkkey+378>        movzbl (%eax),%eax  
+  >│0x8048705 <checkkey+381>        mov    %al,-0x9(%ebp) 
+   │0x8048708 <checkkey+384>        mov    0x8(%ebp),%eax  
+   │0x804870b <checkkey+387>        add    $0x8,%eax  
+   │0x804870e <checkkey+390>        movzbl (%eax),%eax 
+   │0x8048711 <checkkey+393>        mov    %al,-0xa(%ebp)  
+   │0x8048714 <checkkey+396>        mov    0x8(%ebp),%eax 
+   │0x8048717 <checkkey+399>        add    $0x5,%eax  
+   │0x804871a <checkkey+402>        movzbl (%eax),%eax  
+   └──────────────────────────────────────────────────
+child process 1261 In: checkkey                        
+(gdb) nexti
+0x080486ed in checkkey ()
+(gdb) nexti
+0x080486ef in checkkey ()
+(gdb) nexti
+0x080486f2 in checkkey ()
+0x080486f5 in checkkey ()
+0x080486f8 in checkkey ()
+0x080486fa in checkkey ()
+(gdb) nexti
+0x080486fc in checkkey ()
+0x080486ff in checkkey ()
+(gdb) nexti
+0x08048702 in checkkey ()
+0x08048705 in checkkey ()
+
+
